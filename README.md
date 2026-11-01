@@ -50,3 +50,27 @@ Admin: `/admin add-for` (w czyimś imieniu, także przyszłe dni), `/admin sync`
 - Dzień 51 → wiadomość końcowa z linkiem do playlisty.
 - Stan trzymany w `data/state.json` (zrób backup / podmontuj wolumen).
 - Hosting: dowolny VPS / Raspberry Pi / Railway / Fly.io z Node 20+. Uruchamiaj np. przez `pm2 start "npm start" --name song50`.
+
+## Deploy na Optiplexa (GitHub Actions + self-hosted runner)
+
+Push na `main` → runner na serwerze buduje obraz Dockera, rejestruje komendy i restartuje bota.
+
+Na serwerze (jednorazowo):
+
+```bash
+# 1. Docker + katalog na sekrety i dane
+curl -fsSL https://get.docker.com | sh
+sudo mkdir -p /opt/song50/data && sudo chown -R $USER /opt/song50
+nano /opt/song50/.env          # ta sama zawartość co lokalny .env
+
+# 2. Użytkownik runnera
+sudo useradd -m -s /bin/bash gh-runner && sudo usermod -aG docker gh-runner
+sudo chown -R gh-runner /opt/song50
+```
+
+3. GitHub → repo → Settings → Actions → Runners → **New self-hosted runner** → Linux x64.
+   Wykonaj pokazane komendy jako `gh-runner` (`sudo -iu gh-runner`), a w `./config.sh` dodaj `--labels optiplex`.
+4. Usługa systemowa (jako zwykły użytkownik z sudo, w katalogu runnera):
+   `sudo ./svc.sh install gh-runner && sudo ./svc.sh start`
+
+Logi bota: `docker logs -f song50-bot`. Ręczny deploy: zakładka Actions → Deploy → Run workflow.

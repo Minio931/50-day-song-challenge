@@ -1,0 +1,40 @@
+name: Deploy na Optiplexa
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, optiplex]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sprawdź .env na serwerze
+        run: test -f "${SONG50_HOME:-/opt/song50}/.env" || { echo "::error::Brak ${SONG50_HOME:-/opt/song50}/.env"; exit 1; }
+
+      - name: Build
+        run: docker compose -p song50 build
+
+      - name: Rejestracja komend Discorda
+        run: docker compose -p song50 run --rm --no-deps bot node_modules/.bin/tsx scripts/register.ts
+
+      - name: Restart bota
+        run: docker compose -p song50 up -d --remove-orphans
+
+      - name: Sprawdź, czy się zalogował
+        run: |
+          for i in $(seq 1 20); do
+            docker logs song50-bot 2>&1 | grep -q "Zalogowano jako" && { docker logs --tail 5 song50-bot; exit 0; }
+            sleep 3
+          done
+          docker logs --tail 50 song50-bot; exit 1
+
+      - name: Sprzątanie starych obrazów
+        if: always()
+        run: docker image prune -f

@@ -1,0 +1,16 @@
+# Sekrety i dane leżą na serwerze, poza repo: ${SONG50_HOME:-/opt/song50}/.env i /data
+services:
+  bot:
+    build: .
+    image: song50-bot:latest
+    container_name: song50-bot
+    restart: unless-stopped
+    init: true
+    env_file: ${SONG50_HOME:-/opt/song50}/.env
+    environment:
+      DATA_FILE: /data/state.json
+    volumes:
+      - ${SONG50_HOME:-/opt/song50}/data:/data
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
