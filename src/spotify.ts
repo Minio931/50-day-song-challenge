@@ -56,22 +56,55 @@ async function api<T>(method: string, path: string, body?: unknown, retry = 3): 
 export interface TrackInfo {
   id: string;
   uri: string;
+  url: string;
   name: string;
   artists: string;
+  artistLinks: string; // markdown: [Artysta](url), ...
+  album?: string;
+  albumUrl?: string;
+  albumType?: string;
+  cover?: string;
+  releaseDate?: string;
+  releasePrecision?: 'year' | 'month' | 'day';
+  durationMs?: number;
+  explicit?: boolean;
 }
 
 interface RawTrack {
   id: string;
   uri: string;
   name: string;
-  artists: { name: string }[];
+  duration_ms?: number;
+  explicit?: boolean;
+  external_urls?: { spotify?: string };
+  artists: { name: string; external_urls?: { spotify?: string } }[];
+  album?: {
+    name: string;
+    album_type?: string;
+    release_date?: string;
+    release_date_precision?: 'year' | 'month' | 'day';
+    images?: { url: string; width?: number }[];
+    external_urls?: { spotify?: string };
+  };
 }
 
 const toInfo = (t: RawTrack): TrackInfo => ({
   id: t.id,
   uri: t.uri,
+  url: t.external_urls?.spotify ?? `https://open.spotify.com/track/${t.id}`,
   name: t.name,
   artists: t.artists.map((a) => a.name).join(', '),
+  artistLinks: t.artists
+    .map((a) => (a.external_urls?.spotify ? `[${a.name}](${a.external_urls.spotify})` : a.name))
+    .join(', '),
+  album: t.album?.name,
+  albumUrl: t.album?.external_urls?.spotify,
+  albumType: t.album?.album_type,
+  cover: t.album?.images?.[0]?.url, // największa okładka jest pierwsza
+  releaseDate: t.album?.release_date,
+  releasePrecision: t.album?.release_date_precision,
+  durationMs: t.duration_ms,
+  explicit: t.explicit,
 });
 
 export async function getTrack(id: string): Promise<TrackInfo> {

@@ -14,6 +14,8 @@ export interface State {
   totalDays: number;
   startDate: string | null; // YYYY-MM-DD (dzień 1)
   reminderChannelId: string | null;
+  feedChannelId: string | null; // gdzie lecą powiadomienia o dodanych piosenkach (null = kanał przypomnień)
+  feedEnabled: boolean;
   reminderTime: string; // HH:mm
   playlistId: string | null;
   title: string;
@@ -27,6 +29,8 @@ const defaults: State = {
   totalDays: 50,
   startDate: null,
   reminderChannelId: null,
+  feedChannelId: null,
+  feedEnabled: true,
   reminderTime: '09:00',
   playlistId: null,
   title: '50 DAYS SONG CHALLENGE',

@@ -12,14 +12,17 @@ import {
   TextInputBuilder,
   TextInputStyle,
   type Attachment,
+  type Guild,
+  type User,
   type SendableChannels,
 } from 'discord.js';
+import { announce, type Added, type Who } from './announce.js';
 import { config } from './config.js';
 import { currentDay, isValidDate, themeFor, todayLocal } from './days.js';
 import { renderThemes } from './graphic.js';
 import { parseBulk, resolveTrackId } from './links.js';
 import { findDayMarker, syncPlaylist } from './playlist.js';
-import { createPlaylist, getTrack, playlistUrl } from './spotify.js';
+import { createPlaylist, getTrack, playlistUrl, type TrackInfo } from './spotify.js';
 import { getState, removeSubmission, save, update, upsertSubmission } from './store.js';
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
@@ -43,7 +46,7 @@ function maxOpenDay(): number {
 
 class UserError extends Error {}
 
-async function addSong(userId: string, day: number, link: string, asAdmin = false): Promise<string> {
+async function addSong(userId: string, day: number, link: string, asAdmin = false): Promise<Added & { text: string }> {
   const s = getState();
   if (day < 1 || day > s.totalDays) throw new UserError(`Dzień musi być w zakresie 1–${s.totalDays}.`);
   if (!asAdmin && day > maxOpenDay()) throw new UserError(`Dzień ${day} jeszcze nie nadszedł.`);
@@ -52,9 +55,10 @@ async function addSong(userId: string, day: number, link: string, asAdmin = fals
   if (!id) throw new UserError('To nie wygląda na link do **utworu** Spotify (Udostępnij → Kopiuj link do utworu).');
 
   let name = id;
+  let track: TrackInfo | null = null;
   try {
-    const t = await getTrack(id);
-    name = `${t.artists} – ${t.name}`;
+    track = await getTrack(id);
+    name = `${track.artists} – ${track.name}`;
   } catch (e) {
     console.warn('getTrack nie zadziałał, dodaję bez nazwy:', (e as Error).message);
   }
@@ -67,7 +71,27 @@ async function addSong(userId: string, day: number, link: string, asAdmin = fals
     addedAt: new Date().toISOString(),
   });
   save();
-  return `${result === 'replaced' ? '🔁 Podmieniono' : '✅ Dodano'} dzień **${day}** (${themeFor(day)}): ${name}`;
+  const replaced = result === 'replaced';
+  return {
+    day,
+    replaced,
+    track,
+    trackUri: `spotify:track:${id}`,
+    trackName: name,
+    text: `${replaced ? '🔁 Podmieniono' : '✅ Dodano'} dzień **${day}** (${themeFor(day)}): ${name}`,
+  };
+}
+
+async function whoOf(user: User, guild: Guild | null): Promise<Who> {
+  const member = await guild?.members.fetch(user.id).catch(() => null);
+  return {
+    name: member?.displayName ?? user.globalName ?? user.username,
+    avatar: (member ?? user).displayAvatarURL({ size: 128 }),
+  };
+}
+
+function announceSafe(who: Who, items: Added[]): void {
+  announce(client, who, items).catch((e) => console.error('Powiadomienie o piosence:', e));
 }
 
 async function syncSafe(): Promise<string> {
@@ -92,14 +116,17 @@ async function readTxt(att: Attachment): Promise<string> {
   return (await res.text()).replace(/^﻿/, '');
 }
 
-async function processBulk(userId: string, text: string): Promise<string> {
+async function processBulk(userId: string, text: string, who: Who): Promise<string> {
   const { ok, bad } = parseBulk(text);
   if (!ok.length) throw new UserError('Nie znalazłem żadnej linii w formacie `numer_dnia link`.');
   const lines: string[] = [];
   let added = 0;
+  const done: Added[] = [];
   for (const item of ok) {
     try {
-      lines.push(await addSong(userId, item.day, item.link));
+      const r = await addSong(userId, item.day, item.link);
+      lines.push(r.text);
+      done.push(r);
       added++;
     } catch (e) {
       lines.push(`❌ Linia ${item.line} (dzień ${item.day}): ${e instanceof UserError ? e.message : 'błąd Spotify'}`);
@@ -107,6 +134,7 @@ async function processBulk(userId: string, text: string): Promise<string> {
   }
   for (const b of bad) lines.push(`❌ Linia ${b.line}: nie rozumiem „${b.raw.slice(0, 60)}”`);
   const sync = added ? await syncSafe() : '';
+  announceSafe(who, done);
   return clip(`**Dodano ${added}/${ok.length + bad.length}**\n${lines.join('\n')}\n${sync}`);
 }
 
@@ -172,8 +200,9 @@ async function handleCommand(i: ChatInputCommandInteraction): Promise<void> {
     case 'add': {
       await i.deferReply({ ephemeral: true });
       const day = i.options.getInteger('day') ?? maxOpenDay();
-      const msg = await addSong(i.user.id, day, i.options.getString('link', true));
-      await i.editReply(`${msg}\n${await syncSafe()}`);
+      const r = await addSong(i.user.id, day, i.options.getString('link', true));
+      await i.editReply(`${r.text}\n${await syncSafe()}`);
+      announceSafe(await whoOf(i.user, i.guild), [r]);
       return;
     }
 
@@ -181,7 +210,7 @@ async function handleCommand(i: ChatInputCommandInteraction): Promise<void> {
       const file = i.options.getAttachment('file');
       if (file) {
         await i.deferReply({ ephemeral: true });
-        await i.editReply(await processBulk(i.user.id, await readTxt(file)));
+        await i.editReply(await processBulk(i.user.id, await readTxt(file), await whoOf(i.user, i.guild)));
         return;
       }
       const missing = (() => {
@@ -372,8 +401,23 @@ async function handleAdmin(i: ChatInputCommandInteraction): Promise<void> {
     }
     case 'add-for': {
       const user = i.options.getUser('user', true);
-      const msg = await addSong(user.id, i.options.getInteger('day', true), i.options.getString('link', true), true);
-      return void (await i.editReply(`${msg} (dla <@${user.id}>)\n${await syncSafe()}`));
+      const r = await addSong(user.id, i.options.getInteger('day', true), i.options.getString('link', true), true);
+      await i.editReply(`${r.text} (dla <@${user.id}>)\n${await syncSafe()}`);
+      announceSafe(await whoOf(user, i.guild), [r]);
+      return;
+    }
+    case 'feed': {
+      const ch = i.options.getChannel('channel');
+      const off = i.options.getBoolean('off') ?? false;
+      update((s) => {
+        s.feedEnabled = !off;
+        if (ch) s.feedChannelId = ch.id;
+      });
+      const s = getState();
+      const target = s.feedChannelId ?? s.reminderChannelId;
+      return void (await i.editReply(
+        s.feedEnabled ? `🔔 Powiadomienia o piosenkach: ${target ? `<#${target}>` : 'brak kanału – ustaw /admin setup'}` : '🔕 Powiadomienia wyłączone.',
+      ));
     }
     case 'sync':
       return void (await i.editReply(await syncSafe()));
@@ -392,7 +436,7 @@ async function handleModal(i: ModalSubmitInteraction): Promise<void> {
     .split(/\r?\n/)
     .filter((l) => !/^\s*\d{1,3}\s*$/.test(l))
     .join('\n');
-  await i.editReply(await processBulk(i.user.id, text));
+  await i.editReply(await processBulk(i.user.id, text, await whoOf(i.user, i.guild)));
 }
 
 // ───────────────────────── start ─────────────────────────

@@ -44,6 +44,9 @@ Format masowy (każdy z tych działa): `1 link`, `dzień 2: link`, `Day 3 - link
 
 Admin: `/admin add-for` (w czyimś imieniu, także przyszłe dni), `/admin sync`, `/admin remind`, `/admin theme`.
 
+Po każdym dodaniu bot wysyła embed (kto, utwór, wykonawca, okładka, album, data wydania, długość, dzień i temat). `/bulk` z więcej niż 5 piosenkami → jedno zbiorcze podsumowanie.
+Kanał: domyślnie ten od przypomnień; zmiana `/admin feed channel:#kanał`, wyłączenie `/admin feed off:true`.
+
 ## Działanie
 
 - Przypomnienie z tematem i grafiką (podświetlony bieżący dzień) codziennie o ustawionej godzinie. Po restarcie bota zaległe przypomnienie wysyła się samo.

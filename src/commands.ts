@@ -91,6 +91,18 @@ export const commands = [
         .addIntegerOption((o) => dayOpt(o, true))
         .addStringOption((o) => o.setName('link').setDescription('Link').setRequired(true)),
     )
+    .addSubcommand((s) =>
+      s
+        .setName('feed')
+        .setDescription('Kanał z powiadomieniami o dodanych piosenkach')
+        .addChannelOption((o) =>
+          o
+            .setName('channel')
+            .setDescription('Puste = ten sam co przypomnienia')
+            .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement),
+        )
+        .addBooleanOption((o) => o.setName('off').setDescription('Wyłącz powiadomienia')),
+    )
     .addSubcommand((s) => s.setName('sync').setDescription('Przebuduj playlistę od zera'))
     .addSubcommand((s) => s.setName('remind').setDescription('Wyślij dzisiejsze przypomnienie teraz')),
 ].map((c) => c.toJSON());
