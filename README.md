@@ -53,24 +53,20 @@ Admin: `/admin add-for` (w czyimś imieniu, także przyszłe dni), `/admin sync`
 
 ## Deploy na Optiplexa (GitHub Actions + self-hosted runner)
 
-Push na `main` → runner na serwerze buduje obraz Dockera, rejestruje komendy i restartuje bota.
+Push na `main` → runner kopiuje kod do `/home/minio/web/song50`, buduje obraz Dockera, rejestruje komendy i restartuje bota.
+`.env` i `data/` w tym katalogu nie są ruszane przy deployu. Ścieżkę zmienisz w `APP_DIR` w `.github/workflows/deploy.yml`.
 
-Na serwerze (jednorazowo):
+Na serwerze, jako `minio` (jednorazowo):
 
 ```bash
-# 1. Docker + katalog na sekrety i dane
-curl -fsSL https://get.docker.com | sh
-sudo mkdir -p /opt/song50/data && sudo chown -R $USER /opt/song50
-nano /opt/song50/.env          # ta sama zawartość co lokalny .env
-
-# 2. Użytkownik runnera
-sudo useradd -m -s /bin/bash gh-runner && sudo usermod -aG docker gh-runner
-sudo chown -R gh-runner /opt/song50
+sudo apt install -y rsync
+sudo usermod -aG docker minio      # jeśli jeszcze nie jest w grupie docker (potem wyloguj/zaloguj)
+mkdir -p ~/web/song50/data
+nano ~/web/song50/.env             # ta sama zawartość co lokalny .env
 ```
 
-3. GitHub → repo → Settings → Actions → Runners → **New self-hosted runner** → Linux x64.
-   Wykonaj pokazane komendy jako `gh-runner` (`sudo -iu gh-runner`), a w `./config.sh` dodaj `--labels optiplex`.
-4. Usługa systemowa (jako zwykły użytkownik z sudo, w katalogu runnera):
-   `sudo ./svc.sh install gh-runner && sudo ./svc.sh start`
+Runner: GitHub → repo → Settings → Actions → Runners → **New self-hosted runner** → Linux x64.
+Komendy z tej strony wykonaj jako `minio` (np. w `~/actions-runner`), w `./config.sh` dodaj `--labels optiplex`, potem:
+`sudo ./svc.sh install minio && sudo ./svc.sh start`
 
 Logi bota: `docker logs -f song50-bot`. Ręczny deploy: zakładka Actions → Deploy → Run workflow.

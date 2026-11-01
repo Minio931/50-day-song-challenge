@@ -1,4 +1,5 @@
-# Sekrety i dane leżą na serwerze, poza repo: ${SONG50_HOME:-/opt/song50}/.env i /data
+# Uruchamiane z katalogu aplikacji na serwerze (APP_DIR w workflow).
+# .env i data/ leżą obok i nie są nadpisywane przy deployu.
 services:
   bot:
     build: .
@@ -6,11 +7,11 @@ services:
     container_name: song50-bot
     restart: unless-stopped
     init: true
-    env_file: ${SONG50_HOME:-/opt/song50}/.env
+    env_file: .env
     environment:
       DATA_FILE: /data/state.json
     volumes:
-      - ${SONG50_HOME:-/opt/song50}/data:/data
+      - ./data:/data
     logging:
       driver: json-file
       options: { max-size: "10m", max-file: "3" }
